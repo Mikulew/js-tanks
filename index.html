@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <title>Tanks JS</title>
+    <meta charset="UTF-8" />
+    <style>
+      canvas { background: #333; display: block; margin: 0 auto; cursor: crosshair; }
+    </style>
+  </head>
+
+  <body>
+    <canvas id="game" width="800" height="600"></canvas>
+
+    <script>
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+
+      const tank = {
+        x: 400,
+        y: 300,
+        speed: 2,
+        angle: 0 // kąt lufy (do kursora)
+      };
+
+      const bullets = [];
+
+      // 📍 Aktualna pozycja kursora
+      let mouseX = canvas.width / 2;
+      let mouseY = canvas.height / 2;
+
+      // 🕹️ Sterowanie ruchem czołgu
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowUp") tank.y -= tank.speed;
+        if (e.key === "ArrowDown") tank.y += tank.speed;
+        if (e.key === "ArrowLeft") tank.x -= tank.speed;
+        if (e.key === "ArrowRight") tank.x += tank.speed;
+
+        if (e.code === "Space") shoot();
+      });
+
+      // 🖱️ Aktualizacja kursora
+      canvas.addEventListener("mousemove", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        mouseX = e.clientX - rect.left;
+        mouseY = e.clientY - rect.top;
+      });
+
+      // 🔫 Strzał
+      function shoot() {
+        const bulletSpeed = 5;
+        bullets.push({
+          x: tank.x + Math.cos(tank.angle) * 30,
+          y: tank.y + Math.sin(tank.angle) * 30,
+          dx: Math.cos(tank.angle) * bulletSpeed,
+          dy: Math.sin(tank.angle) * bulletSpeed
+        });
+      }
+
+      // 🧭 Rysowanie czołgu z obrotem lufy
+      function drawTank() {
+        // oblicz kąt w kierunku kursora
+        tank.angle = Math.atan2(mouseY - tank.y, mouseX - tank.x);
+
+        // rysuj kadłub
+        ctx.save();
+        ctx.translate(tank.x, tank.y);
+        ctx.fillStyle = "green";
+        ctx.fillRect(-20, -15, 40, 30); // prostokąt kadłuba
+        ctx.restore();
+
+        // rysuj lufę
+        ctx.save();
+        ctx.translate(tank.x, tank.y);
+        ctx.rotate(tank.angle);
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, -3, 40, 6); // lufa
+        ctx.restore();
+      }
+
+      // 🔥 Aktualizacja i rysowanie pocisków
+      function updateBullets() {
+        for (let i = 0; i < bullets.length; i++) {
+          const b = bullets[i];
+          b.x += b.dx;
+          b.y += b.dy;
+
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = "yellow";
+          ctx.fill();
+
+          // usuń pocisk spoza ekranu
+          if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+            bullets.splice(i, 1);
+            i--;
+          }
+        }
+      }
+
+      // 🌀 Główna pętla gry
+      function gameLoop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawTank();
+        updateBullets();
+        requestAnimationFrame(gameLoop);
+      }
+
+      gameLoop();
+    </script>
+  </body>
+</html>
