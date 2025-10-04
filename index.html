@@ -1,140 +1,144 @@
 <!DOCTYPE html>
 <html lang="pl">
-  <head>
-    <title>Tanks JS</title>
-    <meta charset="UTF-8" />
-    <style>
-      canvas { background: #333; display: block; margin: 0 auto; cursor: crosshair; }
-    </style>
-  </head>
+<head>
+  <title>Tanks JS</title>
+  <meta charset="UTF-8" />
+  <style>
+    canvas { background: #333; display: block; margin: 0 auto; cursor: crosshair; }
+    #ui { color: white; text-align: center; font-family: monospace; margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="800" height="600"></canvas>
+  <div id="ui">HP: <span id="hp">100</span> | Ammo: <span id="ammo">100</span></div>
 
-  <body>
-    <canvas id="game" width="800" height="600"></canvas>
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const hpEl = document.getElementById("hp");
+    const ammoEl = document.getElementById("ammo");
 
-    <script>
-      const canvas = document.getElementById("game");
-      const ctx = canvas.getContext("2d");
+    const tank = {
+      x: 400,
+      y: 300,
+      speed: 3,
+      angle: 0,
+      hp: 100,
+      ammo: 100
+    };
 
-      const tank = {
-        x: 400,
-        y: 300,
-        speed: 2,
-        angle: 0,
-      };
+    const otherPlayers = new Map(); // id => {x, y, angle, hp, ammo}
+    let lastSent = { x: tank.x, y: tank.y, angle: tank.angle };
 
-      const bullets = [];
-      let mouseX = canvas.width / 2;
-      let mouseY = canvas.height / 2;
+    const socket = new WebSocket("ws://localhost:9999");
 
-      const params = new URLSearchParams({
-          x: tank.x,
-          y: tank.y,
-          angle: tank.angle,
-      });
+    socket.addEventListener("open", () => {
+      console.log("✅ Połączono z serwerem!");
+    });
 
-      // const ws = new WebSocket(`ws://localhost:8080?${params.toString()}`);
-      // ws.onopen = () => console.log("✅ Połączono z serwerem!");
-      // ws.onmessage = (msg) => console.log("📨 Odpowiedź serwera:", msg.data);
-      
-      const socket = new WebSocket("ws://192.168.1.3:9999");
+    socket.addEventListener("message", (event) => {
+      const lines = event.data.trim().split("\n");
+      otherPlayers.clear();
 
-      socket.addEventListener("open", () => {
-        socket.send("MOVE 0.5 -1.2 45.0");
-      });
+      for (const line of lines) {
+        if (line.startsWith("PLAYER ")) {
+          const parts = line.split(" ");
+          const id = parts[1];
+          const x = parseFloat(parts[2]);
+          const y = parseFloat(parts[3]);
+          const angle = parseFloat(parts[4]);
+          const hp = parseInt(parts[5]);
+          const ammo = parseInt(parts[6]);
 
-      socket.addEventListener("message", (event) => {
-        console.log("Odpowiedź serwera:", event.data);
-      });
+          otherPlayers.set(id, { x, y, angle, hp, ammo });
 
-      function sendState(extra = {}) {
-        if (socket.readyState === WebSocket.OPEN) {
-          const state = {
-            x: tank.x,
-            y: tank.y,
-            angle: tank.angle,
-            ...extra
-          };
-          socket.send(JSON.stringify(state));
-        }
-      }
-
-      document.addEventListener("keydown", (e) => {
-        let moved = false;
-        if (e.key === "ArrowUp") { tank.y -= tank.speed; moved = true; }
-        if (e.key === "ArrowDown") { tank.y += tank.speed; moved = true; }
-        if (e.key === "ArrowLeft") { tank.x -= tank.speed; moved = true; }
-        if (e.key === "ArrowRight") { tank.x += tank.speed; moved = true; }
-        if (moved) sendState();
-      });
-
-      canvas.addEventListener("mousemove", (e) => {
-        const rect = canvas.getBoundingClientRect();
-        mouseX = e.clientX - rect.left;
-        mouseY = e.clientY - rect.top;
-      });
-
-      canvas.addEventListener("mousedown", (e) => {
-        if (e.button === 2) {
-          shoot();
-          sendState({ shoot: true });
-        }
-      });
-
-      canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-
-      function shoot() {
-        const bulletSpeed = 5;
-        bullets.push({
-          x: tank.x + Math.cos(tank.angle) * 30,
-          y: tank.y + Math.sin(tank.angle) * 30,
-          dx: Math.cos(tank.angle) * bulletSpeed,
-          dy: Math.sin(tank.angle) * bulletSpeed
-        });
-      }
-
-      function drawTank() {
-        tank.angle = Math.atan2(mouseY - tank.y, mouseX - tank.x);
-        sendState();
-        ctx.save();
-        ctx.translate(tank.x, tank.y);
-        ctx.fillStyle = "green";
-        ctx.fillRect(-20, -15, 40, 30);
-        ctx.restore();
-        ctx.save();
-
-        ctx.translate(tank.x, tank.y);
-        ctx.rotate(tank.angle);
-        ctx.fillStyle = "black";
-        ctx.fillRect(0, -3, 40, 6);
-        ctx.restore();
-      }
-
-      function updateBullets() {
-        for (let i = 0; i < bullets.length; i++) {
-          const b = bullets[i];
-          b.x += b.dx;
-          b.y += b.dy;
-
-          ctx.beginPath();
-          ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
-          ctx.fillStyle = "yellow";
-          ctx.fill();
-
-          if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
-            bullets.splice(i, 1);
-            i--;
+          // Jeśli to nasz gracz (można rozpoznać po podobnej pozycji lub dodać ID z serwera)
+          // Na razie zakładamy, że pierwszy gracz z podobną pozycją to my
+          if (Math.abs(x - tank.x) < 10 && Math.abs(y - tank.y) < 10) {
+            tank.hp = hp;
+            tank.ammo = ammo;
+            hpEl.textContent = hp;
+            ammoEl.textContent = ammo;
           }
         }
       }
+    });
 
-      function gameLoop() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawTank();
-        updateBullets();
-        requestAnimationFrame(gameLoop);
+    function sendMove() {
+      const dx = tank.x - lastSent.x;
+      const dy = tank.y - lastSent.y;
+      const angle = tank.angle;
+
+      if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1 || Math.abs(angle - lastSent.angle) > 0.01) {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(`MOVE ${dx} ${dy} ${angle}`);
+          lastSent = { x: tank.x, y: tank.y, angle };
+        }
+      }
+    }
+
+    function shoot() {
+      if (tank.ammo > 0 && socket.readyState === WebSocket.OPEN) {
+        socket.send("SHOOT");
+        // Serwer odejmie amunicję i wyśle nowy stan
+      }
+    }
+
+    // Sterowanie
+    const keys = {};
+    document.addEventListener("keydown", (e) => { keys[e.key] = true; });
+    document.addEventListener("keyup", (e) => { keys[e.key] = false; });
+
+    canvas.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      tank.angle = Math.atan2(mouseY - tank.y, mouseX - tank.x);
+    });
+
+    canvas.addEventListener("mousedown", (e) => {
+      if (e.button === 0) shoot(); // lewy przycisk = strzał
+    });
+
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+    function update() {
+      // Ruch
+      let moved = false;
+      if (keys["ArrowUp"] || keys["w"] || keys["W"]) { tank.y -= tank.speed; moved = true; }
+      if (keys["ArrowDown"] || keys["s"] || keys["S"]) { tank.y += tank.speed; moved = true; }
+      if (keys["ArrowLeft"] || keys["a"] || keys["A"]) { tank.x -= tank.speed; moved = true; }
+      if (keys["ArrowRight"] || keys["d"] || keys["D"]) { tank.x += tank.speed; moved = true; }
+
+      if (moved) sendMove();
+    }
+
+    function drawTank(x, y, angle, isLocal = false) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillStyle = isLocal ? "lime" : "red";
+      ctx.fillRect(-20, -15, 40, 30); // korpus
+      ctx.fillRect(20, -3, 20, 6);   // lufa
+      ctx.restore();
+    }
+
+    function gameLoop() {
+      update();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Rysuj innych graczy
+      for (const [id, p] of otherPlayers) {
+        drawTank(p.x, p.y, p.angle, false);
       }
 
-      gameLoop();
-    </script>
-  </body>
+      // Rysuj siebie (nad innymi)
+      drawTank(tank.x, tank.y, tank.angle, true);
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
 </html>
