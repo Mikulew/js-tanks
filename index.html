@@ -27,7 +27,8 @@
       ammo: 100
     };
 
-    const otherPlayers = new Map(); // id => {x, y, angle, hp, ammo}
+    let myId = null;
+    const otherPlayers = new Map(); // id => {x, y, angle, hp, ammo, color}
     let lastSent = { x: tank.x, y: tank.y, angle: tank.angle };
 
     const socket = new WebSocket("ws://localhost:9999");
@@ -38,10 +39,13 @@
 
     socket.addEventListener("message", (event) => {
       const lines = event.data.trim().split("\n");
-      otherPlayers.clear();
 
       for (const line of lines) {
-        if (line.startsWith("PLAYER ")) {
+        if (line.startsWith("MY_ID ")) {
+          myId = line.split(" ")[1];
+          console.log("Moje ID:", myId);
+        }
+        else if (line.startsWith("PLAYER ")) {
           const parts = line.split(" ");
           const id = parts[1];
           const x = parseFloat(parts[2]);
@@ -49,16 +53,17 @@
           const angle = parseFloat(parts[4]);
           const hp = parseInt(parts[5]);
           const ammo = parseInt(parts[6]);
+          const color = parts[7];
 
-          otherPlayers.set(id, { x, y, angle, hp, ammo });
-
-          // Jeśli to nasz gracz (można rozpoznać po podobnej pozycji lub dodać ID z serwera)
-          // Na razie zakładamy, że pierwszy gracz z podobną pozycją to my
-          if (Math.abs(x - tank.x) < 10 && Math.abs(y - tank.y) < 10) {
+          if (id === myId) {
+            // To ja – aktualizuj tylko UI
             tank.hp = hp;
             tank.ammo = ammo;
             hpEl.textContent = hp;
             ammoEl.textContent = ammo;
+          } else {
+            // Inny gracz
+            otherPlayers.set(id, { x, y, angle, hp, ammo, color });
           }
         }
       }
@@ -80,11 +85,9 @@
     function shoot() {
       if (tank.ammo > 0 && socket.readyState === WebSocket.OPEN) {
         socket.send("SHOOT");
-        // Serwer odejmie amunicję i wyśle nowy stan
       }
     }
 
-    // Sterowanie
     const keys = {};
     document.addEventListener("keydown", (e) => { keys[e.key] = true; });
     document.addEventListener("keyup", (e) => { keys[e.key] = false; });
@@ -97,13 +100,12 @@
     });
 
     canvas.addEventListener("mousedown", (e) => {
-      if (e.button === 0) shoot(); // lewy przycisk = strzał
+      if (e.button === 0) shoot();
     });
 
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
     function update() {
-      // Ruch
       let moved = false;
       if (keys["ArrowUp"] || keys["w"] || keys["W"]) { tank.y -= tank.speed; moved = true; }
       if (keys["ArrowDown"] || keys["s"] || keys["S"]) { tank.y += tank.speed; moved = true; }
@@ -113,14 +115,22 @@
       if (moved) sendMove();
     }
 
-    function drawTank(x, y, angle, isLocal = false) {
+    function drawTank(x, y, angle, color, label = "") {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(angle);
-      ctx.fillStyle = isLocal ? "lime" : "red";
+      ctx.fillStyle = color;
       ctx.fillRect(-20, -15, 40, 30); // korpus
       ctx.fillRect(20, -3, 20, 6);   // lufa
       ctx.restore();
+
+      // Etykieta (ID gracza) nad czołgiem
+      if (label) {
+        ctx.fillStyle = "white";
+        ctx.font = "12px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(label, x, y - 25);
+      }
     }
 
     function gameLoop() {
@@ -129,11 +139,11 @@
 
       // Rysuj innych graczy
       for (const [id, p] of otherPlayers) {
-        drawTank(p.x, p.y, p.angle, false);
+        drawTank(p.x, p.y, p.angle, p.color, id); // ID jako etykieta
       }
 
-      // Rysuj siebie (nad innymi)
-      drawTank(tank.x, tank.y, tank.angle, true);
+      // Rysuj siebie (zielony)
+      drawTank(tank.x, tank.y, tank.angle, "lime");
 
       requestAnimationFrame(gameLoop);
     }
