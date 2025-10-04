@@ -26,19 +26,35 @@
       let mouseX = canvas.width / 2;
       let mouseY = canvas.height / 2;
 
-      const ws = new WebSocket("ws://localhost:8080");
-      ws.onopen = () => console.log("✅ Połączono z serwerem!");
-      ws.onmessage = (msg) => console.log("📨 Odpowiedź serwera:", msg.data);
+      const params = new URLSearchParams({
+          x: tank.x,
+          y: tank.y,
+          angle: tank.angle,
+      });
+
+      // const ws = new WebSocket(`ws://localhost:8080?${params.toString()}`);
+      // ws.onopen = () => console.log("✅ Połączono z serwerem!");
+      // ws.onmessage = (msg) => console.log("📨 Odpowiedź serwera:", msg.data);
+      
+      const socket = new WebSocket("ws://192.168.1.3:9999");
+
+      socket.addEventListener("open", () => {
+        socket.send("MOVE 0.5 -1.2 45.0");
+      });
+
+      socket.addEventListener("message", (event) => {
+        console.log("Odpowiedź serwera:", event.data);
+      });
 
       function sendState(extra = {}) {
-        if (ws.readyState === WebSocket.OPEN) {
+        if (socket.readyState === WebSocket.OPEN) {
           const state = {
             x: tank.x,
             y: tank.y,
             angle: tank.angle,
             ...extra
           };
-          ws.send(JSON.stringify(state));
+          socket.send(JSON.stringify(state));
         }
       }
 
@@ -85,6 +101,7 @@
         ctx.fillRect(-20, -15, 40, 30);
         ctx.restore();
         ctx.save();
+
         ctx.translate(tank.x, tank.y);
         ctx.rotate(tank.angle);
         ctx.fillStyle = "black";
